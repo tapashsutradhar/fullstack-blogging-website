@@ -1,0 +1,197 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Altriveo Admin</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="/css/style.css" rel="stylesheet">
+  <style>
+    .sidebar { height:100vh; background:#111827; color:#ddd; padding-top:24px; }
+    .sidebar a { color:#ddd; display:block; padding:10px 18px; text-decoration:none; }
+    .sidebar a:hover { background:#0b1220; color:#fff; }
+    .editor { border-radius:10px; background:#fff; padding:20px; box-shadow:0 6px 18px rgba(0,0,0,0.06); }
+    .preview { min-height:120px; background:#fff; padding:16px; border-radius:8px; box-shadow:inset 0 0 0 1px #eee; }
+  </style>
+</head>
+<body>
+<div class="container-fluid">
+  <div class="row">
+    <nav class="col-md-2 sidebar">
+      <h4 class="text-center">Altriveo</h4>
+      <a href="#" onclick="show('dashboard')">Dashboard</a>
+      <a href="#" onclick="show('new')">New Post</a>
+      <a href="#" onclick="show('posts')">All Posts</a>
+      <a href="#" onclick="logout()">Logout</a>
+    </nav>
+
+    <main class="col-md-10 p-4">
+      <div id="dashboard" class="mb-4">
+        <h3>Welcome, Admin</h3>
+        <p class="text-muted">Create and manage posts for Altriveo.</p>
+      </div>
+
+      <!-- NEW / EDIT -->
+      <div id="new" style="display:none;">
+        <h4 id="editorTitle">New Post</h4>
+        <div class="editor mb-3">
+          <div class="mb-3"><input id="title" class="form-control" placeholder="Post title"></div>
+          <div class="mb-3"><textarea id="content" rows="10" class="form-control" placeholder="Write your article..."></textarea></div>
+          <div class="d-flex gap-2">
+            <button class="btn btn-success" onclick="save()">Publish</button>
+            <button class="btn btn-secondary" onclick="clearEditor()">Clear</button>
+            <button class="btn btn-warning" id="updateBtn" style="display:none;" onclick="update()">Update</button>
+          </div>
+        </div>
+
+        <h5>Live preview</h5>
+        <div class="preview" id="preview"></div>
+      </div>
+
+      <!-- POSTS LIST -->
+      <div id="posts" style="display:none;">
+        <h4>All posts</h4>
+        <table class="table table-hover mt-3">
+          <thead><tr><th>ID</th><th>Title</th><th>Date</th><th>Actions</th></tr></thead>
+          <tbody id="postsTable"></tbody>
+        </table>
+      </div>
+
+    </main>
+  </div>
+</div>
+
+<script>
+let editingId = null;
+
+async function checkLoginAndInit() {
+  const r = await fetch('/api/check-login');
+  const d = await r.json();
+  if (!d.loggedIn) {
+    window.location = '/login.html';
+    return;
+  }
+  show('dashboard');
+}
+
+function show(page) {
+  document.getElementById('dashboard').style.display = 'none';
+  document.getElementById('new').style.display = 'none';
+  document.getElementById('posts').style.display = 'none';
+  if (page === 'dashboard') document.getElementById('dashboard').style.display = 'block';
+  if (page === 'new') {
+    document.getElementById('new').style.display = 'block';
+    document.getElementById('editorTitle').innerText = 'New Post';
+    document.getElementById('updateBtn').style.display = 'none';
+  }
+  if (page === 'posts') {
+    document.getElementById('posts').style.display = 'block';
+    loadAllPosts();
+  }
+}
+
+async function save() {
+  const title = document.getElementById('title').value.trim();
+  const content = document.getElementById('content').value.trim();
+  if (!title || !content) { alert('Title and content required'); return; }
+  console.log('[DEBUG] Save post', { title });
+
+  const res = await fetch('/api/posts', {
+    method: 'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ title, content })
+  });
+  const data = await res.json();
+  if (data.success) {
+    alert('Published');
+    clearEditor();
+    show('posts');
+  } else {
+    alert('Error publishing');
+  }
+}
+
+function clearEditor() {
+  editingId = null;
+  document.getElementById('title').value = '';
+  document.getElementById('content').value = '';
+  document.getElementById('preview').innerHTML = '';
+}
+
+document.getElementById('content')?.addEventListener?.('input', () => {
+  document.getElementById('preview').innerHTML = document.getElementById('content').value.replace(/\n/g,'<br>');
+});
+
+async function loadAllPosts() {
+  const res = await fetch('/api/posts');
+  const posts = await res.json();
+  let html = '';
+  posts.forEach(p => {
+    html += `<tr>
+      <td>${p.id}</td>
+      <td>${escapeHtml(p.title)}</td>
+      <td>${p.created_at}</td>
+      <td>
+        <button class="btn btn-sm btn-primary" onclick="startEdit(${p.id})">Edit</button>
+        <button class="btn btn-sm btn-danger" onclick="del(${p.id})">Delete</button>
+        <a class="btn btn-sm btn-outline-secondary" href="/post.html?id=${p.id}" target="_blank">Open</a>
+      </td>
+    </tr>`;
+  });
+  document.getElementById('postsTable').innerHTML = html;
+}
+
+async function startEdit(id) {
+  console.log('[DEBUG] start edit', id);
+  const res = await fetch('/api/posts/' + id);
+  const p = await res.json();
+  editingId = id;
+  document.getElementById('title').value = p.title;
+  document.getElementById('content').value = p.content;
+  document.getElementById('preview').innerHTML = p.content.replace(/\n/g,'<br>');
+  document.getElementById('editorTitle').innerText = 'Edit Post #' + id;
+  document.getElementById('updateBtn').style.display = 'inline-block';
+  show('new');
+}
+
+async function update() {
+  if (!editingId) return alert('No post selected');
+  const title = document.getElementById('title').value.trim();
+  const content = document.getElementById('content').value.trim();
+  const res = await fetch('/api/posts/' + editingId, {
+    method: 'PUT', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ title, content })
+  });
+  const d = await res.json();
+  if (d.success) {
+    alert('Updated');
+    show('posts');
+  } else {
+    alert('Update failed');
+  }
+}
+
+async function del(id) {
+  if (!confirm('Delete post #' + id + '?')) return;
+  const res = await fetch('/api/posts/' + id, { method: 'DELETE' });
+  const d = await res.json();
+  if (d.success) {
+    alert('Deleted');
+    loadAllPosts();
+  } else {
+    alert('Delete failed');
+  }
+}
+
+async function logout() {
+  await fetch('/api/logout', { method: 'POST' });
+  window.location = '/login.html';
+}
+
+function escapeHtml(s) {
+  return s.replace(/[&<>"']/g, function(m) { return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[m]; });
+}
+
+checkLoginAndInit();
+</script>
+</body>
+</html>

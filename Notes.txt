@@ -1,0 +1,15 @@
+altriveo/
+├── package.json
+├── app.js
+├── data/
+│   └── (altriveo.db auto-created)
+└── public/
+    ├── index.html          ← integrated dynamic homepage
+    ├── login.html
+    ├── register.html
+    ├── post.html           ← single post page
+    ├── admin.html          ← modern admin panel (create/edit/delete)
+    ├── css/
+    │   └── style.css
+    └── js/
+        └── admin.js
